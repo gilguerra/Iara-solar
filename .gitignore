@@ -1,0 +1,25 @@
+# env
+.env
+.env.*
+
+# dependencies / build
+node_modules/
+dist/
+build/
+
+# logs
+*.log
+
+# editor / system
+.vscode/
+.DS_Store
+Thumbs.db
+
+# runtime data / volumes (docker volume mounts — never commit)
+infra/data/
+
+# backup files
+*.save
+
+# ssl / certificates (never commit these)
+infra/traefik/acme.json
