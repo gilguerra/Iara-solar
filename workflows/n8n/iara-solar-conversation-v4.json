@@ -1,0 +1,534 @@
+{
+  "name": "iara-solar-conversation-v4",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iara-solar/inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-1400, -320],
+      "id": "7f131d5a-4b77-444f-9a9e-4f90db54a367",
+      "name": "Webhook",
+      "webhookId": "341ac0bd-6170-4e6c-8c4d-cb60167667b6"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\n\nconst channel = body.channel || 'whatsapp';\nconst channelUserId = body.from || null;\n\nreturn [\n  {\n    json: {\n      channel,\n      channelUserId,\n      sessionId: `${channel}:${channelUserId}`,\n      messageText: body.text || '',\n      attachments: Array.isArray(body.attachments) ? body.attachments : [],\n      hasAttachment: Array.isArray(body.attachments) && body.attachments.length > 0,\n      receivedAt: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1216, -320],
+      "id": "d2e93f7d-90a2-4611-b7dd-8666d6f940fe",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select session_id, context_json\nfrom conversation.conversation_sessions\nwhere session_id = $1\nlimit 1;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-1040, -320],
+      "id": "10bcf3ec-223f-4fda-8c94-e1a1ee33a0f2",
+      "name": "Load Session",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized = $('Normalize Input').first().json;\nconst dbRow = $json;\n\nlet context;\nlet isNew = false;\n\nif (!dbRow || !dbRow.session_id) {\n  isNew = true;\n  context = {\n    session_id: normalized.sessionId,\n    channel: normalized.channel,\n    channel_user_id: normalized.channelUserId,\n    stage: 'discovery',\n    lead: {},\n    energy: {},\n    installation: {},\n    location: {},\n    backend: {},\n    conversation: { missing_fields: [] }\n  };\n} else {\n  context = dbRow.context_json || {};\n}\n\nreturn [{\n  json: {\n    ...normalized,\n    sessionId: normalized.sessionId,\n    context,\n    isNewSession: isNew\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-864, -320],
+      "id": "992f3eb2-4c94-4c8b-86ca-f31e587d685c",
+      "name": "Resolve Session"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-attachment-check",
+              "leftValue": "={{ $json.hasAttachment }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-672, -320],
+      "id": "has-attachment-node",
+      "name": "Has Attachment?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Você é um assistente especializado em leitura de contas de energia elétrica brasileiras.\n\nO cliente enviou uma imagem ou PDF de uma conta de luz.\n\nExtraia APENAS os dados que aparecem claramente no documento.\nNão invente nenhuma informação.\n\nResponda APENAS em JSON válido:\n{\n  \"monthly_consumption_kwh\": null,\n  \"bill_amount_brl\": null,\n  \"utility_company\": null,\n  \"connection_type\": null,\n  \"extraction_notes\": \"\"\n}\n\nRegras:\n- monthly_consumption_kwh: consumo em kWh do mês mais recente (número)\n- bill_amount_brl: valor total a pagar em reais (número, sem R$)\n- utility_company: nome da distribuidora (ex: \"Enel SP\", \"Neoenergia\", \"CEMIG\")\n- connection_type: tipo de ligação se visível (\"monofasico\", \"bifasico\" ou \"trifasico\")\n- extraction_notes: observações ou motivo de campos não encontrados\n\nAnexo:\n{{ $json.attachments[0].url }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [-480, -560],
+      "id": "bill-extraction-chain",
+      "name": "Extract Bill Data"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-368, -752],
+      "id": "vision-model-node",
+      "name": "OpenAI Vision Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse bill extraction result from LLM\nconst rawText = $json.text || $json.output || '';\n\nlet parsed;\ntry {\n  const cleaned = rawText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);\n} catch (e) {\n  parsed = {\n    monthly_consumption_kwh: null,\n    bill_amount_brl: null,\n    utility_company: null,\n    connection_type: null,\n    extraction_notes: 'Não foi possível ler o documento'\n  };\n}\n\n// Get the session data from Resolve Session\nconst base = $('Resolve Session').first().json;\nconst context = JSON.parse(JSON.stringify(base.context || {}));\n\ncontext.energy = context.energy || {};\n\n// Merge extracted bill data into context\nif (parsed.monthly_consumption_kwh) context.energy.monthly_consumption_kwh = parsed.monthly_consumption_kwh;\nif (parsed.bill_amount_brl)         context.energy.bill_amount_brl         = parsed.bill_amount_brl;\nif (parsed.utility_company)         context.energy.utility_company         = parsed.utility_company;\nif (parsed.connection_type)         context.energy.connection_type         = parsed.connection_type;\n\ncontext.energy.bill_document_received = true;\n\n// Build a reply based on what was extracted\nconst got = [];\nif (parsed.monthly_consumption_kwh) got.push(`consumo de *${parsed.monthly_consumption_kwh} kWh*`);\nif (parsed.bill_amount_brl)         got.push(`valor de *R$ ${Number(parsed.bill_amount_brl).toFixed(2).replace('.', ',')}*`);\nif (parsed.utility_company)         got.push(`distribuidora *${parsed.utility_company}*`);\n\nlet reply;\nif (got.length > 0) {\n  reply = `Recebi sua conta! Identifiquei ${got.join(', ')}. `;\n} else {\n  reply = `Recebi o documento, mas não consegui ler os dados automaticamente. Pode me informar seu consumo mensal em kWh e o valor da conta? `;\n}\n\ncontext.conversation = context.conversation || {};\ncontext.conversation.last_bot_message = reply;\n\nreturn [{\n  json: {\n    ...base,\n    context,\n    outboundText: reply,\n    billExtracted: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, -560],
+      "id": "parse-bill-node",
+      "name": "Parse Bill Extraction"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Você é a Iara, assistente da Iara Solar, especialista em energia solar fotovoltaica.\n\n## DADOS JÁ COLETADOS (NÃO peça novamente):\n{{ JSON.stringify($json.context) }}\n\n## MENSAGEM DO USUÁRIO:\n{{ $json.messageText }}\n\n## SUA TAREFA:\n1. Extraia qualquer dado NOVO mencionado pelo usuário nesta mensagem\n2. Gere uma resposta natural em português para continuar a conversa\n\n## REGRAS CRÍTICAS:\n- NUNCA peça dados que já estão no contexto acima (verifique context.lead, context.energy, context.installation)\n- Se o usuário disser que não tem a conta de luz (\"não tenho\", \"não tenho em mãos\", \"não sei\", etc.), extraia energy.bill_not_available = true e pergunte diretamente o consumo médio mensal em kWh\n- Extraia dados mesmo quando ditos de forma casual (ex: \"me chamo João\" → full_name: \"João\")\n- NÃO invente dados\n- NÃO repita perguntas já feitas\n- A resposta deve ser curta, natural e comercial\n\n## CAMPOS QUE VOCÊ PODE EXTRAIR:\nlead: full_name, city, state, address_text\nenergy: monthly_consumption_kwh, bill_amount_brl, connection_type, utility_company, bill_not_available (boolean)\ninstallation: installation_type (telhado | solo), roof_type\n\n## RESPONDA APENAS EM JSON VÁLIDO:\n{\n  \"entities_to_save\": {\n    \"lead\": {},\n    \"energy\": {},\n    \"installation\": {}\n  },\n  \"draft_reply\": \"\"\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [-480, -80],
+      "id": "ff5e3a96-693a-44a0-8016-9c5cdd6a7893",
+      "name": "Conversation LLM"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-368, 128],
+      "id": "cc2f4c35-5885-4f62-974c-291039b4088f",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse LLM output\nconst rawText = $json.text || $json.output || '';\n\nlet parsed;\ntry {\n  const cleaned = rawText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);\n} catch (e) {\n  parsed = {\n    entities_to_save: {},\n    draft_reply: 'Desculpe, não entendi muito bem. Pode repetir?'\n  };\n}\n\n// Get session data — could come from bill extraction branch OR directly from Resolve Session\nlet base;\ntry {\n  base = $('Parse Bill Extraction').first().json;\n} catch(e) {\n  base = $('Resolve Session').first().json;\n}\n\nconst context = JSON.parse(JSON.stringify(base.context || {}));\n\ncontext.lead         = context.lead         || {};\ncontext.energy       = context.energy       || {};\ncontext.installation = context.installation || {};\ncontext.location     = context.location     || {};\ncontext.conversation = context.conversation || {};\n\n// Merge extracted entities (only non-empty values, never overwrite with empty)\nconst entities = parsed.entities_to_save || {};\nif (entities.lead) {\n  Object.entries(entities.lead).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') context.lead[k] = v; });\n}\nif (entities.energy) {\n  Object.entries(entities.energy).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') context.energy[k] = v; });\n}\nif (entities.installation) {\n  Object.entries(entities.installation).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== '') context.installation[k] = v; });\n}\n\n// -------------------------------------------------------\n// DETERMINISTIC missing_fields — code decides, not LLM\n// -------------------------------------------------------\nconst missing = [];\n\nif (!context.lead.full_name) missing.push('full_name');\n\nconst hasConsumption  = !!context.energy.monthly_consumption_kwh;\nconst billNotAvail    = !!context.energy.bill_not_available;\nconst billDocReceived = !!context.energy.bill_document_received;\n\nif (!hasConsumption) {\n  missing.push(billNotAvail || billDocReceived ? 'monthly_consumption_kwh' : 'bill_document_or_energy_data');\n}\n\nif (!context.installation.installation_type) missing.push('installation_type');\nif (!context.installation.roof_type)         missing.push('roof_type');\n\nconst hasLocation = context.lead.address_text || (context.lead.city && context.lead.state);\nif (!hasLocation) missing.push('location');\n\n// -------------------------------------------------------\n// DETERMINISTIC is_ready_for_quote\n// Minimum: name + kWh + installation type + roof type\n// -------------------------------------------------------\nconst isReadyForQuote = !!(\n  context.lead.full_name &&\n  context.energy.monthly_consumption_kwh &&\n  context.installation.installation_type &&\n  context.installation.roof_type\n);\n\ncontext.conversation.missing_fields    = missing;\ncontext.conversation.last_user_message = base.messageText;\ncontext.conversation.last_bot_message  = parsed.draft_reply;\n\nreturn [{\n  json: {\n    ...base,\n    context,\n    outboundText: parsed.draft_reply,\n    isReadyForQuote,\n    llmOutput: parsed\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, -80],
+      "id": "a3f1c2d4-8b7e-4f1a-b2c3-d4e5f6a7b8c9",
+      "name": "Parse LLM Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "b1c2d3e4-f5a6-7b8c-9d0e-f1a2b3c4d5e6",
+              "leftValue": "={{ $json.isReadyForQuote }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [0, -80],
+      "id": "b2c3d4e5-f6a7-8b9c-0d1e-f2a3b4c5d6e7",
+      "name": "Is Ready for Quote"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $json.context || {};\nconst lead = ctx.lead || {};\nconst energy = ctx.energy || {};\nconst installation = ctx.installation || {};\n\nreturn [{\n  json: {\n    ...$json,\n    apiPayload: {\n      lead: {\n        full_name:    lead.full_name    || null,\n        phone:        $json.channelUserId || null,\n        city:         lead.city         || null,\n        state:        lead.state        || null,\n        address_text: lead.address_text || null,\n        source: 'whatsapp'\n      },\n      budget_request: {\n        monthly_consumption_kwh: energy.monthly_consumption_kwh || null,\n        bill_amount_brl:         energy.bill_amount_brl         || null,\n        utility_company:         energy.utility_company         || null,\n        connection_type:         energy.connection_type         || null,\n        installation_type:       installation.installation_type || null,\n        roof_type:               installation.roof_type         || null\n      }\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, -240],
+      "id": "c3d4e5f6-a7b8-9c0d-1e2f-a3b4c5d6e7f8",
+      "name": "Build API Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://iara-solar-api:3000/intake/generate-with-kits",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "CHANGE_ME_RUN_scripts/generate-api-key.js_AND_INSERT_HERE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apiPayload) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, -240],
+      "id": "d4e5f6a7-b8c9-0d1e-2f3a-b4c5d6e7f8a9",
+      "name": "Call Iara Solar API"
+    },
+    {
+      "parameters": {
+        "jsCode": "const apiResponse = $json;\nconst quote = apiResponse.quote_version || {};\nconst kit   = apiResponse.selected_kit  || null;\n\nconst base = $('Parse LLM Response').first().json;\nconst context = JSON.parse(JSON.stringify(base.context || {}));\n\ncontext.backend = context.backend || {};\ncontext.backend.quote_generated = true;\ncontext.backend.quote_id        = quote.id || null;\ncontext.backend.quote_kwp       = quote.estimated_system_kwp || null;\ncontext.backend.quote_price     = quote.estimated_price_brl  || null;\nif (kit) context.backend.selected_kit_id = kit.id;\n\n// Format numbers for PT-BR display\nconst fmtBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });\nconst kwp    = Number(quote.estimated_system_kwp || 0).toFixed(2);\n\nlet reply = `Perfeito, ${context.lead.full_name || 'cliente'}! Preparei sua estimativa:\\n\\n`;\nreply += `⚡ *Sistema necessário:* ${kwp} kWp\\n`;\n\nif (kit) {\n  const modules = kit.module_quantity ? `${kit.module_quantity} painéis de ${kit.module_power_w}W` : '';\n  reply += `\\n📦 *Kit recomendado:*\\n`;\n  reply += `${kit.supplier_kit_name}\\n`;\n  if (modules) reply += `${modules} · Inversor ${kit.inverter_power_kw} kW\\n`;\n  reply += `Marca módulo: ${kit.brand_module || '—'} · Inversor: ${kit.brand_inverter || '—'}\\n`;\n  if (kit.price_cash_brl) {\n    reply += `💰 *${fmtBRL(kit.price_cash_brl)}* à vista`;\n    if (kit.price_term_brl) reply += ` | ${fmtBRL(kit.price_term_brl)} a prazo`;\n    reply += `\\n`;\n  }\n  if (kit.availability_text) reply += `Disponibilidade: ${kit.availability_text}\\n`;\n} else {\n  reply += `\\n⚠️ Nenhum kit disponível no momento para esse perfil. Entraremos em contato em breve.\\n`;\n}\n\nif (quote.estimated_savings_brl) {\n  reply += `\\n💡 *Economia mensal estimada:* ${fmtBRL(quote.estimated_savings_brl)}\\n`;\n}\n\nreply += `\\nEssa é uma estimativa preliminar. Posso passar você para um de nossos consultores para detalhar a proposta. Tem interesse?`;\n\ncontext.conversation.last_bot_message = reply;\n\nreturn [{\n  json: {\n    ...base,\n    context,\n    outboundText: reply\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, -240],
+      "id": "e5f6a7b8-c9d0-1e2f-3a4b-c5d6e7f8a9b0",
+      "name": "Format Quote Reply"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "92dde718-d974-493a-a979-8fc94b64dbfc",
+              "leftValue": "={{ $json.isNewSession === true }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-672, 320],
+      "id": "0243a2a1-2ea4-4bac-b13b-15b65bc12734",
+      "name": "Is New Session",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into conversation.conversation_sessions (\n  session_id, channel, channel_user_id, context_json, created_at, updated_at\n)\nvalues ($1, $2, $3, $4::jsonb, now(), now())\nreturning *;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }},{{ $json.channel }},{{ $json.channelUserId }},{{ JSON.stringify($json.context) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-480, 192],
+      "id": "a1abd677-d656-4a67-a099-c8eb80611388",
+      "name": "Create Session",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    session_id: $json.sessionId,\n    direction: 'inbound',\n    message_text: $json.messageText || '',\n    payload_json: {\n      channel: $json.channel,\n      channelUserId: $json.channelUserId,\n      messageText: $json.messageText,\n      attachments: $json.attachments || [],\n      receivedAt: $json.receivedAt\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-288, 320],
+      "id": "bb6045d3-7eb3-4712-b7b5-d873e5d91f43",
+      "name": "Prepare Inbound Message Row"
+    },
+    {
+      "parameters": {
+        "schema": { "__rl": true, "value": "conversation", "mode": "list", "cachedResultName": "conversation" },
+        "table": { "__rl": true, "value": "conversation_messages", "mode": "list", "cachedResultName": "conversation_messages" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": ["id"],
+          "schema": [
+            {"id": "id", "displayName": "id", "required": false, "defaultMatch": true, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": false},
+            {"id": "session_id", "displayName": "session_id", "required": true, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "direction", "displayName": "direction", "required": true, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "message_text", "displayName": "message_text", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload_json", "displayName": "payload_json", "required": false, "defaultMatch": false, "display": true, "type": "object", "canBeUsedToMatch": true},
+            {"id": "created_at", "displayName": "created_at", "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true}
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-128, 320],
+      "id": "32b23816-a52d-4bab-a5d4-b9510d4388fd",
+      "name": "Save Inbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update conversation.conversation_sessions\nset context_json = $2::jsonb, updated_at = now()\nwhere session_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }},{{ JSON.stringify($json.context) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [960, -80],
+      "id": "eb7ecbcb-d933-410b-8abd-6467aec66eb9",
+      "name": "Update Session Context",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    session_id: $json.sessionId,\n    direction: 'outbound',\n    message_text: $json.outboundText || '',\n    payload_json: {\n      sessionId: $json.sessionId,\n      reply: $json.outboundText || '',\n      generatedAt: new Date().toISOString()\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 80],
+      "id": "a259b6c8-bedd-4f70-9926-98aea0b51a19",
+      "name": "Prepare Outbound Message Row"
+    },
+    {
+      "parameters": {
+        "schema": { "__rl": true, "value": "conversation", "mode": "list", "cachedResultName": "conversation" },
+        "table": { "__rl": true, "value": "conversation_messages", "mode": "list", "cachedResultName": "conversation_messages" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": ["id"],
+          "schema": [
+            {"id": "id", "displayName": "id", "required": false, "defaultMatch": true, "display": true, "type": "string", "canBeUsedToMatch": true, "removed": false},
+            {"id": "session_id", "displayName": "session_id", "required": true, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "direction", "displayName": "direction", "required": true, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "message_text", "displayName": "message_text", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "payload_json", "displayName": "payload_json", "required": false, "defaultMatch": false, "display": true, "type": "object", "canBeUsedToMatch": true},
+            {"id": "created_at", "displayName": "created_at", "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true}
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [960, 240],
+      "id": "7cef5d78-4ea2-4047-a734-f9c8de635c92",
+      "name": "Save Outbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    ok: true,\n    sessionId: $json.sessionId,\n    reply: $json.outboundText || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, -240],
+      "id": "23803b3e-004b-4671-9c1a-ba2eaa914d32",
+      "name": "Prepare Webhook Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1200, -240],
+      "id": "8f5c8696-7e93-41fa-8b82-5412ab9eb398",
+      "name": "Return Message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Vision Model": {
+      "ai_languageModel": [
+        [{ "node": "Extract Bill Data", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [{ "node": "Conversation LLM", "type": "ai_languageModel", "index": 0 }]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [{ "node": "Normalize Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [{ "node": "Load Session", "type": "main", "index": 0 }]
+      ]
+    },
+    "Load Session": {
+      "main": [
+        [{ "node": "Resolve Session", "type": "main", "index": 0 }]
+      ]
+    },
+    "Resolve Session": {
+      "main": [
+        [
+          { "node": "Has Attachment?", "type": "main", "index": 0 },
+          { "node": "Is New Session", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Has Attachment?": {
+      "main": [
+        [{ "node": "Extract Bill Data", "type": "main", "index": 0 }],
+        [{ "node": "Conversation LLM", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Bill Data": {
+      "main": [
+        [{ "node": "Parse Bill Extraction", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Bill Extraction": {
+      "main": [
+        [{ "node": "Conversation LLM", "type": "main", "index": 0 }]
+      ]
+    },
+    "Conversation LLM": {
+      "main": [
+        [{ "node": "Parse LLM Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [{ "node": "Is Ready for Quote", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Ready for Quote": {
+      "main": [
+        [{ "node": "Build API Payload", "type": "main", "index": 0 }],
+        [
+          { "node": "Prepare Webhook Response", "type": "main", "index": 0 },
+          { "node": "Update Session Context", "type": "main", "index": 0 },
+          { "node": "Prepare Outbound Message Row", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build API Payload": {
+      "main": [
+        [{ "node": "Call Iara Solar API", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Iara Solar API": {
+      "main": [
+        [{ "node": "Format Quote Reply", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Quote Reply": {
+      "main": [
+        [
+          { "node": "Prepare Webhook Response", "type": "main", "index": 0 },
+          { "node": "Update Session Context", "type": "main", "index": 0 },
+          { "node": "Prepare Outbound Message Row", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Is New Session": {
+      "main": [
+        [{ "node": "Create Session", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Inbound Message Row", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [{ "node": "Prepare Inbound Message Row", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Inbound Message Row": {
+      "main": [
+        [{ "node": "Save Inbound Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Outbound Message Row": {
+      "main": [
+        [{ "node": "Save Outbound Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Webhook Response": {
+      "main": [
+        [{ "node": "Return Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Session Context": { "main": [[]] },
+    "Save Inbound Message": { "main": [[]] },
+    "Save Outbound Message": { "main": [[]] },
+    "Return Message": { "main": [[]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c3d4e5f6-a7b8-9c0d-1e2f-a3b4c5d6e7f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "773fd90fcee93888dcb188990d6356eb0122f314ac20cd5e5f4db5f974d2942e"
+  },
+  "id": "xFRchhRtkuahfs64",
+  "tags": []
+}

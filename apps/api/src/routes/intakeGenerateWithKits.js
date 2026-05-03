@@ -50,7 +50,6 @@ export async function intakeGenerateWithKitsRoutes(app) {
           notes: body.budget_request.notes,
           input_payload: body.budget_request.input_payload,
         },
-        kits_limit: body.kits_limit ?? 3,
       });
 
       return reply.code(201).send(result);

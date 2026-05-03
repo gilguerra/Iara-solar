@@ -16,7 +16,7 @@
  * Never store the raw KEY in the database or commit it anywhere.
  */
 
-import { randomBytes, createHash } from 'crypto';
+const { randomBytes, createHash } = require('crypto');
 
 const key  = randomBytes(32).toString('hex');
 const hash = createHash('sha256').update(key).digest('hex');

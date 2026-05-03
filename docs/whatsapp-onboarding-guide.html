@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhatsApp API Onboarding — Iara Solar</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: #1a1a2e;
+      background: #fff;
+      padding: 48px 64px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      border-bottom: 3px solid #f5a623;
+      padding-bottom: 20px;
+      margin-bottom: 36px;
+    }
+
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    header .subtitle {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-top: 40px;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1.5px solid #e8e8e8;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-top: 22px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 10px;
+      color: #2d2d2d;
+    }
+
+    ul, ol {
+      margin: 8px 0 12px 20px;
+    }
+
+    li {
+      margin-bottom: 5px;
+      color: #2d2d2d;
+    }
+
+    code {
+      font-family: 'Fira Code', monospace;
+      background: #f4f4f8;
+      border: 1px solid #e0e0e8;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12px;
+      color: #c0392b;
+    }
+
+    pre {
+      font-family: 'Fira Code', monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-x: auto;
+      margin: 12px 0 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 13px;
+    }
+
+    th {
+      background: #1a1a2e;
+      color: #fff;
+      font-weight: 600;
+      padding: 9px 14px;
+      text-align: left;
+    }
+
+    td {
+      padding: 8px 14px;
+      border-bottom: 1px solid #e8e8e8;
+      color: #333;
+    }
+
+    tr:nth-child(even) td {
+      background: #fafafa;
+    }
+
+    .callout {
+      background: #fff8e7;
+      border-left: 4px solid #f5a623;
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 13px;
+      color: #5a4000;
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #c87000;
+    }
+
+    .checklist {
+      list-style: none;
+      margin-left: 0;
+    }
+
+    .checklist li::before {
+      content: '☐ ';
+      font-size: 15px;
+      color: #f5a623;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #e8f5e9;
+      color: #2e7d32;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-left: 6px;
+    }
+
+    .badge.orange {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      margin: 14px 0;
+      align-items: flex-start;
+    }
+
+    .step-number {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      background: #1a1a2e;
+      color: #f5a623;
+      font-weight: 700;
+      font-size: 13px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-content {
+      flex: 1;
+      padding-top: 3px;
+    }
+
+    .step-content strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 16px;
+      border-top: 1.5px solid #e8e8e8;
+      font-size: 11.5px;
+      color: #aaa;
+      text-align: center;
+    }
+
+    @media print {
+      body { padding: 32px 48px; }
+      h2 { page-break-after: avoid; }
+      pre, table { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>WhatsApp API Onboarding Guide</h1>
+    <div class="subtitle">Iara Solar — Internal Technical Reference &nbsp;·&nbsp; April 2026</div>
+  </header>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>Meta BSP vs Direct Cloud API — Important Distinction</h2>
+
+  <p>
+    Before applying for anything, it's critical to understand the difference between
+    becoming a <strong>Meta Business Solution Provider (BSP)</strong> and simply using
+    the <strong>WhatsApp Cloud API directly</strong> as a business.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Direct Cloud API</th>
+        <th>BSP (Business Solution Provider)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Who it's for</strong></td>
+        <td>Any business using WhatsApp for their own operations</td>
+        <td>Companies that <em>resell</em> WhatsApp access to other businesses</td>
+      </tr>
+      <tr>
+        <td><strong>What you can do</strong></td>
+        <td>Run your own numbers</td>
+        <td>Manage numbers on behalf of clients</td>
+      </tr>
+      <tr>
+        <td><strong>Approval</strong></td>
+        <td>Self-serve, fast</td>
+        <td>Application process, several weeks</td>
+      </tr>
+      <tr>
+        <td><strong>Cost</strong></td>
+        <td>Free to apply</td>
+        <td>Usually requires revenue commitment</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Bottom line for Iara Solar</strong>
+    You are not reselling raw API access — you are offering a SaaS product that uses
+    WhatsApp as the channel. This puts you in the <strong>Tech Provider</strong> category,
+    not BSP. You don't need BSP status.
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>What You Actually Need: Tech Provider</h2>
+
+  <p>
+    Meta has a lighter track called <strong>Tech Provider</strong> (formerly "Solution Provider")
+    which lets you build products on top of WhatsApp and use
+    <strong>Embedded Signup</strong> to connect client numbers without becoming a full BSP.
+    This is the correct path for Iara Solar.
+  </p>
+
+  <h3>Business &amp; Legal Requirements</h3>
+  <ul>
+    <li>Registered legal entity — CNPJ in Brazil is sufficient</li>
+    <li>Meta Business Account in good standing</li>
+    <li>Agreement to WhatsApp Business Platform Terms of Service</li>
+  </ul>
+
+  <h3>Technical Requirements</h3>
+  <ul>
+    <li>Working app registered in Meta Developers console</li>
+    <li>Webhook endpoint that passes Meta's verification challenge (GET + <code>hub.challenge</code>)</li>
+    <li>SSL certificate on your webhook URL (already handled by Traefik + Let's Encrypt)</li>
+    <li>Embedded Signup flow implemented on your landing page</li>
+  </ul>
+
+  <div class="callout">
+    <strong>No minimum revenue or customer base</strong>
+    The Tech Provider path is self-serve. There are no minimum thresholds required to apply.
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>The Full Onboarding Flow</h2>
+
+  <p>Once approved, this is how an Iara Solar customer goes from landing page to a live WhatsApp number:</p>
+
+  <pre>Landing page → Checkout (Stripe) → Embedded Signup (Meta OAuth)
+→ Your backend auto-provisions tenant → Number is live in minutes</pre>
+
+  <div class="step">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <strong>Landing page + payment</strong>
+      Company fills a form (name, CNPJ, email, phone number they want to use),
+      pays via Stripe subscription. On <code>payment_intent.succeeded</code> webhook,
+      the onboarding sequence is triggered.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <strong>Meta Embedded Signup</strong>
+      A Meta-provided OAuth button embedded on your page. The solar company:
+      <ol style="margin-top:8px">
+        <li>Clicks "Connect WhatsApp"</li>
+        <li>Logs into their Facebook/Meta Business account</li>
+        <li>Selects or registers their phone number</li>
+        <li>Grants your app permission to send/receive on their behalf</li>
+      </ol>
+      <p style="margin-top:8px">Meta returns an <code>access_token</code> + <code>phone_number_id</code> for that tenant:</p>
+      <pre>{
+  "phone_number_id": "123456789",
+  "waba_id": "987654321",
+  "access_token": "EAAxx..."
+}</pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <strong>Backend auto-provisioning</strong>
+      Your <code>/onboarding/complete</code> endpoint:
+      <ol style="margin-top:8px">
+        <li>Creates a tenant row in the database</li>
+        <li>Generates an API key (<code>scripts/generate-api-key.js</code> logic)</li>
+        <li>Stores <code>phone_number_id</code> + <code>access_token</code> in tenant config</li>
+        <li>Registers the webhook subscription for that WABA with Meta</li>
+        <li>Sends a welcome message to the company's test number</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <strong>Number is live</strong>
+      Any WhatsApp message sent to that number hits Meta → your n8n webhook →
+      Iara Solar flow → reply goes back automatically.
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>What You Need to Build</h2>
+
+  <table>
+    <thead>
+      <tr><th>Piece</th><th>Stack / Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Landing page</td><td>Next.js or plain HTML</td></tr>
+      <tr><td>Payment</td><td>Stripe Subscriptions</td></tr>
+      <tr><td>Meta Embedded Signup button</td><td>Meta JS SDK — ~3 lines of code</td></tr>
+      <tr><td>Onboarding API endpoint</td><td>New Fastify route <code>/onboarding/complete</code></td></tr>
+      <tr><td>Per-tenant webhook registration</td><td>Meta Graph API call at signup time</td></tr>
+      <tr><td>Tenant config storage</td><td>Add <code>waba_id</code>, <code>phone_number_id</code>, <code>wa_access_token</code> columns to <code>tenants</code> table</td></tr>
+      <tr><td>n8n routing</td><td>Route incoming messages to correct tenant by <code>phone_number_id</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>Application Process (Step by Step)</h2>
+
+  <div class="step">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <strong>Create a Meta Business Account</strong>
+      Go to <code>business.facebook.com</code> and verify your business with your CNPJ document.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <strong>Create an App in Meta Developers</strong>
+      Go to <code>developers.facebook.com</code> → My Apps → Create App → Type: Business.
+      Add the "WhatsApp" product to the app.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <strong>Get approved for WhatsApp Business Platform</strong>
+      Submit your business use case. Brazil-based businesses are generally approved
+      within 1–5 business days. You get a test number immediately while approval processes.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <strong>Enable Embedded Signup</strong>
+      Apply for the <code>whatsapp_business_management</code> permission.
+      This allows your app to manage <em>other companies'</em> numbers.
+      Requires a short review (~1 week).
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">5</div>
+    <div class="step-content">
+      <strong>Go Live</strong>
+      Submit your app for Meta review with a screencast of your Embedded Signup flow.
+      Meta verifies you are not misusing access.
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>Pre-Application Checklist</h2>
+
+  <ul class="checklist">
+    <li>CNPJ registered legal entity</li>
+    <li>Business website live (landing page is sufficient)</li>
+    <li>Privacy Policy URL publicly accessible</li>
+    <li>Terms of Service URL publicly accessible</li>
+    <li>Clear description of use case prepared (see below)</li>
+    <li>SSL-enabled webhook URL live and responding</li>
+  </ul>
+
+  <div class="callout">
+    <strong>Suggested use case description</strong>
+    "Solar installation companies use our SaaS platform to automate customer quote
+    requests via WhatsApp. When a homeowner contacts a solar company's WhatsApp number,
+    our system collects energy consumption data, calculates the required solar system
+    size, and returns a personalized equipment quote — all automatically."
+  </div>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>Brazil-Specific Notes</h2>
+
+  <ul>
+    <li>Brazil is WhatsApp's largest market — Meta has a dedicated team there</li>
+    <li>Review processes are generally faster for Brazilian companies</li>
+    <li>Meta is familiar with SaaS products built on the platform in Brazil</li>
+    <li>Reference companies that started as Tech Providers before becoming full BSPs: <strong>Zenvia</strong>, <strong>Take Blip</strong>, <strong>Botmaker</strong></li>
+  </ul>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <h2>Realistic Timeline</h2>
+
+  <table>
+    <thead>
+      <tr><th>Phase</th><th>Work</th><th>Estimated Duration</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Phase 1</td><td>Meta Business Account + App creation + BSP/Tech Provider approval</td><td>1–2 weeks</td></tr>
+      <tr><td>Phase 2</td><td>Landing page + Stripe checkout</td><td>1–2 weeks</td></tr>
+      <tr><td>Phase 3</td><td>Embedded Signup + provisioning backend</td><td>1–2 weeks</td></tr>
+      <tr><td>Phase 4</td><td>Multi-tenant n8n routing</td><td>3–5 days</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Start Meta approval now</strong>
+    The Meta review process is the longest-lead item and blocks everything else.
+    Begin the application at <code>developers.facebook.com</code> before writing any code.
+  </div>
+
+  <footer>
+    Iara Solar — Internal Technical Reference &nbsp;·&nbsp; Generated April 2026 &nbsp;·&nbsp; Confidential
+  </footer>
+
+</body>
+</html>

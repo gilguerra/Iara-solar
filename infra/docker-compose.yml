@@ -79,6 +79,7 @@ services:
       - "traefik.http.routers.n8n.rule=Host(`n8n.iarasolar.com`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls.certresolver=le"
+      - "traefik.http.routers.n8n.middlewares=ratelimit-default"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 #    ports:
 #      - "5678:5678"
@@ -106,7 +107,15 @@ services:
       - "traefik.http.routers.api.rule=Host(`api.iarasolar.com`)"
       - "traefik.http.routers.api.entrypoints=websecure"
       - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.routers.api.middlewares=ratelimit-api"
       - "traefik.http.services.api.loadbalancer.server.port=3000"
+      # Rate limit middleware definitions (defined once, reused by all services)
+      - "traefik.http.middlewares.ratelimit-api.ratelimit.average=30"
+      - "traefik.http.middlewares.ratelimit-api.ratelimit.burst=60"
+      - "traefik.http.middlewares.ratelimit-api.ratelimit.period=1m"
+      - "traefik.http.middlewares.ratelimit-default.ratelimit.average=20"
+      - "traefik.http.middlewares.ratelimit-default.ratelimit.burst=40"
+      - "traefik.http.middlewares.ratelimit-default.ratelimit.period=1m"
     environment:
       HOST: 0.0.0.0
       PORT: ${API_PORT}
@@ -122,6 +131,10 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
 #    ports:
 #      - "3000:3000"
     depends_on:
@@ -139,22 +152,33 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      # Entrypoints
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
+      # Rate limiting defaults (applied per middleware, defined below)
+      # Let's Encrypt
       - "--certificatesresolvers.le.acme.email=gilguerra.1983@gmail.com"
       - "--certificatesresolvers.le.acme.storage=/acme.json"
       - "--certificatesresolvers.le.acme.httpchallenge=true"
       - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      # Access log for fail2ban
+      - "--accesslog=true"
+      - "--accesslog.filepath=/logs/access.log"
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "./traefik/acme.json:/acme.json"
+      - "./traefik/logs:/logs"
     networks:
       - iara-solar-net
+      - traefik-public
 
 networks:
   iara-solar-net:
-#    driver: bridge
+    external: true
+  traefik-public:
     external: true

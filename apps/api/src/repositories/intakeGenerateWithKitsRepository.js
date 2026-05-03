@@ -1,5 +1,6 @@
 import { pgPool } from '../lib/postgres.js';
 import { generatePreQuote } from '../services/quoteGenerationService.js';
+import { selectBestKit } from './supplierKitsRepository.js';
 
 export async function createIntakeGenerateWithKits(payload) {
   const client = await pgPool.connect();
@@ -121,61 +122,19 @@ export async function createIntakeGenerateWithKits(payload) {
     const quoteResult = await client.query(quoteQuery, quoteValues);
     const quoteVersion = quoteResult.rows[0];
 
-    const kitsQuery = `
-      SELECT
-        sk.id,
-        sk.supplier_kit_code,
-        sk.supplier_kit_name,
-        sk.brand_module,
-        sk.brand_inverter,
-        sk.module_power_w,
-        sk.module_quantity,
-        sk.inverter_power_kw,
-        sk.kit_power_kwp,
-        sk.phase_type,
-        sk.system_type,
-        sk.structure_type,
-        ss.code AS supplier_code,
-        ss.name AS supplier_name,
-        skp.price_cash_brl,
-        skp.price_term_brl,
-        skp.availability_text,
-        skp.availability_status,
-        skp.captured_at,
-        ABS(sk.kit_power_kwp - $1) AS kwp_distance
-      FROM supplier_kits sk
-      JOIN supplier_sources ss ON ss.id = sk.supplier_source_id
-      LEFT JOIN LATERAL (
-        SELECT
-          price_cash_brl,
-          price_term_brl,
-          availability_text,
-          availability_status,
-          captured_at
-        FROM supplier_kit_prices
-        WHERE supplier_kit_id = sk.id
-        ORDER BY captured_at DESC
-        LIMIT 1
-      ) skp ON true
-      WHERE sk.is_active = true
-        AND ss.tenant_id = $2
-      ORDER BY ABS(sk.kit_power_kwp - $1) ASC, sk.kit_power_kwp ASC
-      LIMIT $3
-    `;
+    await client.query('COMMIT');
 
-    const kitsResult = await client.query(kitsQuery, [
+    // Kit selection runs outside the transaction — read-only, no need to block commit
+    const selectedKit = await selectBestKit(
       Number(generated.estimated_system_kwp),
       payload.tenant_id,
-      Number(payload.kits_limit ?? 3),
-    ]);
-
-    await client.query('COMMIT');
+    );
 
     return {
       lead,
       budget_request: budgetRequest,
       quote_version: quoteVersion,
-      suggested_kits: kitsResult.rows,
+      selected_kit: selectedKit ?? null,
     };
   } catch (error) {
     await client.query('ROLLBACK');

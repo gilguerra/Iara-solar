@@ -2,7 +2,11 @@ import { createHash } from 'crypto';
 import { pgPool } from '../lib/postgres.js';
 
 // Routes that do not require authentication
-const PUBLIC_PATHS = new Set(['/health', '/health/full', '/version']);
+// Routes that skip X-API-Key auth (use Clerk JWT or no auth)
+const PUBLIC_PATHS = new Set(['/health', '/health/full', '/version', '/webhooks/clerk', '/me', '/me/stats', '/setup/distributor']);
+
+// Prefix-based public paths (e.g. /portal/*)
+const PUBLIC_PREFIXES = ['/portal/'];
 
 /**
  * Fastify onRequest hook — validates X-API-Key header and attaches
@@ -25,9 +29,8 @@ const PUBLIC_PATHS = new Set(['/health', '/health/full', '/version']);
  * Never store the raw key in the database.
  */
 export async function authMiddleware(request, reply) {
-  if (PUBLIC_PATHS.has(request.url)) {
-    return;
-  }
+  if (PUBLIC_PATHS.has(request.url)) return;
+  if (PUBLIC_PREFIXES.some((p) => request.url.startsWith(p))) return;
 
   const rawKey = request.headers['x-api-key'];
 

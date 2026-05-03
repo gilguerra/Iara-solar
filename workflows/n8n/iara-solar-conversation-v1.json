@@ -1,0 +1,628 @@
+{
+  "name": "iara-solar-conversation-v1",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Você é a Iara, trabalha na Iara Solar, uma assistente especialista em energia solar fotovoltaica.\n\nSeu papel NÃO é calcular orçamento.\nSeu papel é conduzir a conversa e estruturar os dados do cliente.\n\nContexto atual da sessão:\n{{ JSON.stringify($json.context) }}\n\nMensagem do usuário:\n{{ $json.messageText }}\n\nResponda APENAS em JSON válido:\n\n{\n  \"entities_to_save\": {\n    \"lead\": {},\n    \"energy\": {},\n    \"installation\": {}\n  },\n  \"missing_fields\": [],\n  \"is_ready_for_quote\": false,\n  \"next_goal\": \"\",\n  \"draft_reply\": \"\"\n}\n\nRegras:\n\n1. Extraia apenas dados explícitos\n2. Não invente informações\n3. Seja conservador\n4. Campos possíveis:\n\nlead:\n- full_name\n- city\n- state\n- address_text\n\nenergy:\n- monthly_consumption_kwh\n- bill_amount_brl\n- connection_type\n- utility_company\n\ninstallation:\n- installation_type (telhado | solo)\n- roof_type\n\n5. missing_fields deve conter:\n- full_name\n- bill_document_or_energy_data\n- installation_type\n- roof_type\n- location\n\n6. is_ready_for_quote = true apenas se tiver:\n- full_name\n- monthly_consumption_kwh\n- bill_amount_brl\n- installation_type\n- roof_type\n\n7. draft_reply deve ser natural, comercial e curto",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -848,
+        -688
+      ],
+      "id": "ff5e3a96-693a-44a0-8016-9c5cdd6a7893",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -736,
+        -480
+      ],
+      "id": "cc2f4c35-5885-4f62-974c-291039b4088f",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iara-solar/inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1216,
+        -320
+      ],
+      "id": "7f131d5a-4b77-444f-9a9e-4f90db54a367",
+      "name": "Webhook",
+      "webhookId": "341ac0bd-6170-4e6c-8c4d-cb60167667b6"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select session_id, context_json\nfrom conversation.conversation_sessions\nwhere session_id = $1\nlimit 1;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -928,
+        -320
+      ],
+      "id": "10bcf3ec-223f-4fda-8c94-e1a1ee33a0f2",
+      "name": "Load Session",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update conversation.conversation_sessions\nset context_json = $2::jsonb,\n    updated_at = now()\nwhere session_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }},{{ JSON.stringify({\n  ...$json.context,\n  conversation: {\n    ...$json.context.conversation,\n    last_bot_message: $json.outboundText\n  }\n}) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -464,
+        -464
+      ],
+      "id": "eb7ecbcb-d933-410b-8abd-6467aec66eb9",
+      "name": "Update Session Context",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -288,
+        -320
+      ],
+      "id": "8f5c8696-7e93-41fa-8b82-5412ab9eb398",
+      "name": "Return Message"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "conversation",
+          "mode": "list",
+          "cachedResultName": "conversation"
+        },
+        "table": {
+          "__rl": true,
+          "value": "conversation_messages",
+          "mode": "list",
+          "cachedResultName": "conversation_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "direction",
+              "displayName": "direction",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload_json",
+              "displayName": "payload_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -288,
+        -160
+      ],
+      "id": "7cef5d78-4ea2-4047-a734-f9c8de635c92",
+      "name": "Save Outbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || {};\n\nconst channel = body.channel || 'whatsapp';\nconst channelUserId = body.from || null;\n\nreturn [\n  {\n    json: {\n      channel,\n      channelUserId,\n      sessionId: `${channel}:${channelUserId}`,\n      messageText: body.text || '',\n      attachments: Array.isArray(body.attachments) ? body.attachments : [],\n      receivedAt: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1072,
+        -320
+      ],
+      "id": "d2e93f7d-90a2-4611-b7dd-8666d6f940fe",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "conversation",
+          "mode": "list",
+          "cachedResultName": "conversation"
+        },
+        "table": {
+          "__rl": true,
+          "value": "conversation_messages",
+          "mode": "list",
+          "cachedResultName": "conversation_messages"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "direction",
+              "displayName": "direction",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message_text",
+              "displayName": "message_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload_json",
+              "displayName": "payload_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -128,
+        144
+      ],
+      "id": "32b23816-a52d-4bab-a5d4-b9510d4388fd",
+      "name": "Save Inbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      session_id: $json.sessionId,\n      direction: 'inbound',\n      message_text: $json.messageText || '',\n      payload_json: {\n        channel: $json.channel,\n        channelUserId: $json.channelUserId,\n        messageText: $json.messageText,\n        attachments: $json.attachments || [],\n        receivedAt: $json.receivedAt\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        144
+      ],
+      "id": "bb6045d3-7eb3-4712-b7b5-d873e5d91f43",
+      "name": "Prepare Inbound Message Row"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      ok: true,\n      sessionId: $json.session_id,\n      reply: $input.first().json.outboundText\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        -320
+      ],
+      "id": "23803b3e-004b-4671-9c1a-ba2eaa914d32",
+      "name": "Prepare Webhook Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "if (!$json.sessionId) {\n  throw new Error('sessionId não encontrado no fluxo');\n}\n\nreturn [\n  {\n    json: {\n      session_id: $json.sessionId,\n      direction: 'outbound',\n      message_text: $json.outboundText || '',\n      payload_json: {\n        sessionId: $json.sessionId,\n        reply: $json.outboundText || '',\n        generatedAt: new Date().toISOString()\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        -160
+      ],
+      "id": "a259b6c8-bedd-4f70-9926-98aea0b51a19",
+      "name": "Prepare Outbound Message Row"
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized = $('Normalize Input').first().json;\nconst dbRow = $json; // saída do Load Session\n\nlet context;\nlet isNew = false;\n\nif (!dbRow || !dbRow.session_id) {\n  // sessão não existe\n  isNew = true;\n\n  context = {\n    session_id: normalized.sessionId,\n    channel: normalized.channel,\n    channel_user_id: normalized.channelUserId,\n    stage: \"discovery\",\n    lead: {},\n    energy: {},\n    installation: {},\n    location: {},\n    backend: {},\n    conversation: {\n      missing_fields: []\n    }\n  };\n} else {\n  // sessão existe\n  context = dbRow.context_json || {};\n}\n\nreturn [{\n  json: {\n    ...normalized,\n    sessionId: normalized.sessionId,\n    context,\n    isNewSession: isNew\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        -320
+      ],
+      "id": "992f3eb2-4c94-4c8b-86ca-f31e587d685c",
+      "name": "Resolve Session"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into conversation.conversation_sessions (\n  session_id,\n  channel,\n  channel_user_id,\n  context_json,\n  created_at,\n  updated_at\n)\nvalues (\n  $1,\n  $2,\n  $3,\n  $4::jsonb,\n  now(),\n  now()\n)\nreturning *;",
+        "options": {
+          "queryReplacement": "={{ $json.sessionId }},{{ $json.channel }},{{ $json.channelUserId }},{{ $json.context }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -464,
+        16
+      ],
+      "id": "a1abd677-d656-4a67-a099-c8eb80611388",
+      "name": "Create Session",
+      "credentials": {
+        "postgres": {
+          "id": "QiDbPlLPl5afgGOz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "92dde718-d974-493a-a979-8fc94b64dbfc",
+              "leftValue": "={{ $json.isNewSession === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -624,
+        144
+      ],
+      "id": "0243a2a1-2ea4-4bac-b13b-15b65bc12734",
+      "name": "Is New Session",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $json.context || {};\n\n// garantir estrutura mínima\nctx.lead = ctx.lead || {};\nctx.energy = ctx.energy || {};\nctx.installation = ctx.installation || {};\nctx.location = ctx.location || {};\nctx.conversation = ctx.conversation || {};\n\n// registrar última mensagem\nctx.conversation.last_user_message = $json.messageText || null;\n\n// --------- calcular missing fields ---------\nconst missing = [];\n\n// nome\nif (!ctx.lead.full_name) {\n  missing.push('full_name');\n}\n\n// energia\nconst hasEnergy =\n  !!ctx.energy.monthly_consumption_kwh ||\n  !!ctx.energy.bill_amount_brl ||\n  !!ctx.energy.bill_document_received;\n\nif (!hasEnergy) {\n  missing.push('bill_document_or_energy_data');\n}\n\n// tipo de instalação\nif (!ctx.installation.installation_type) {\n  missing.push('installation_type');\n}\n\n// tipo de cobertura\nif (!ctx.installation.roof_type) {\n  missing.push('roof_type');\n}\n\n// localização\nconst hasLocation =\n  !!ctx.lead.address_text ||\n  (!!ctx.lead.city && !!ctx.lead.state);\n\nif (!hasLocation) {\n  missing.push('location');\n}\n\n// salvar no contexto\nctx.conversation.missing_fields = missing;\n\n// --------- gerar resposta ---------\nlet reply = 'Olá! Eu sou a Iara Solar e posso montar uma estimativa inicial do seu sistema.';\n\nif (missing.includes('bill_document_or_energy_data')) {\n  reply += ' Me envie a conta de luz da Neoenergia em PDF ou foto para eu analisar seu consumo e o valor médio.';\n} else if (missing.includes('location')) {\n  reply += ' Agora me diga onde fica o imóvel, pelo menos cidade e estado.';\n} else if (missing.includes('installation_type')) {\n  reply += ' A instalação será no telhado ou no solo?';\n} else if (missing.includes('roof_type')) {\n  reply += ' Qual é o tipo de cobertura ou estrutura disponível?';\n} else if (missing.includes('full_name')) {\n  reply += ' Qual é o seu nome completo?';\n} else {\n  reply += ' Já tenho os dados mínimos para avançar com a simulação.';\n}\n\n// registrar última resposta\nctx.conversation.last_bot_message = reply;\n\n// --------- saída ---------\nreturn [\n  {\n    json: {\n      ...$json,\n      context: ctx,\n      outboundText: reply\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        -320
+      ],
+      "id": "1390dec0-95a0-4528-871d-1846acbab8ea",
+      "name": "Conversation Logic"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Session": {
+      "main": [
+        [
+          {
+            "node": "Resolve Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session Context": {
+      "main": [
+        []
+      ]
+    },
+    "Return Message": {
+      "main": [
+        []
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Load Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Inbound Message": {
+      "main": [
+        []
+      ]
+    },
+    "Prepare Inbound Message Row": {
+      "main": [
+        [
+          {
+            "node": "Save Inbound Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Webhook Response": {
+      "main": [
+        [
+          {
+            "node": "Return Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Outbound Message": {
+      "main": [
+        []
+      ]
+    },
+    "Prepare Outbound Message Row": {
+      "main": [
+        [
+          {
+            "node": "Save Outbound Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Session": {
+      "main": [
+        [
+          {
+            "node": "Is New Session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Conversation Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Prepare Inbound Message Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Session": {
+      "main": [
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Inbound Message Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Logic": {
+      "main": [
+        [
+          {
+            "node": "Update Session Context",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Outbound Message Row",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "37c23c7d-7a93-4367-860f-408ca4c55cf9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "773fd90fcee93888dcb188990d6356eb0122f314ac20cd5e5f4db5f974d2942e"
+  },
+  "id": "xFRchhRtkuahfs64",
+  "tags": []
+}
